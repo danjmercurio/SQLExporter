@@ -37,6 +37,18 @@ class SQLExporter(object):
         }
         self.DATE_FORMAT = "%Y/%m/%d"
 
+    def connect_db(self):
+        ''' Define methods to connect to various SQL implementations
+            and then connect, returning a database cursor
+        '''
+        def connect_mysql():
+            
+        drivers = {
+            "mysql": connect_mysql,
+            "sqlite": connect_sqlite,
+            "mssql": connect_ms
+        }
+
     def __doc__(self):
         return \
             ''' Export SQL according to some arbitrary rules,
@@ -53,15 +65,12 @@ class SQLExporter(object):
         If slashes are not used, then you must use the universal
         date format of YYYYMMDD or the mm-dd-yyyy date format with dashes.
         '''
-
-        types = {
+        return {
             str: (lambda: parser.parse(date).strftime(self.DATE_FORMAT)),
             int: (lambda: datetime.date.fromtimestamp(date).strftime(self.DATE_FORMAT)),
             float: (lambda: datetime.date.fromtimestamp(date).strftime(self.DATE_FORMAT)),
             datetime.date: (lambda: date.strftime(self.DATE_FORMAT))
-        }
-
-        return types[type(date)]()
+        }.get(type(date))()
 
     def export(self):
         pass
@@ -69,7 +78,8 @@ class SQLExporter(object):
 
 if (__name__ == "__main__"):
     s = SQLExporter()
-    print s.normalize_date("04.02.1992")
-    print s.normalize_date(1535516087)
-    print s.normalize_date(1535516087.322354)
-    print s.normalize_date(datetime.date.today())
+    # Tests for date format
+    assert s.normalize_date("04.02.1992") == "1992/04/02"
+    assert s.normalize_date(1535516087) == "2018/08/28"
+    assert s.normalize_date(1535516087.322354) == "2018/08/28"
+    assert s.normalize_date(datetime.date.today()) == "2018/08/28"
