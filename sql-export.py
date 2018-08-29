@@ -21,6 +21,7 @@ class SQLExporter(object): # Define the exporter as a class so we can reuse it o
 			'NEWLINE': "\n", # Manual line break and text wraps within a field, default is  (ASCII 174), customizable, avoid characters in data
 			'NEWRECORD': "\r\n" # Starts a new record, final carriage return loads the last record, cannot be changed, industry standard
 		}
+		self.DATE_FORMAT = "%Y/%m/%d"
 
 
 
@@ -43,12 +44,11 @@ class SQLExporter(object): # Define the exporter as a class so we can reuse it o
 		date format of YYYYMMDD or the mm-dd-yyyy date format with dashes.
 		'''
 
-		def date_from_string(): return parser.parse(date).strftime("%Y/%m/%d")
-		def date_from_int(): return datetime.date.fromtimestamp(date).strftime("%Y/%m/%d") # e.g. from timestamp
-
 		types = {
-			str: date_from_string,
-			int: date_from_int
+			str: (lambda: parser.parse(date).strftime(self.DATE_FORMAT)),
+			int: (lambda: datetime.date.fromtimestamp(date).strftime(self.DATE_FORMAT)),
+			float: (lambda: datetime.date.fromtimestamp(date).strftime(self.DATE_FORMAT)),
+			datetime.date: (lambda: date.strftime(self.DATE_FORMAT))
 		}
 
 		return types[type(date)]()
@@ -61,3 +61,5 @@ if (__name__ == "__main__"):
 	s = SQLExporter()
 	print s.normalize_date("04.02.1992")
 	print s.normalize_date(1535516087)
+	print s.normalize_date(1535516087.322354)
+	print s.normalize_date(datetime.date.today())
