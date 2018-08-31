@@ -8,6 +8,7 @@ class SQLExporter(object):
 
     def __init__(self, dbdriver='mysql', host='localhost', user='root', password=None,
                  db=None, output_filename='output.csv', logging=None, logger_output=None):
+        self.driver = dbdriver
         self.host = host
         self.password = password
         self.db = db
@@ -54,6 +55,7 @@ Run pip install {0} or sudo apt-get install python-{0}, or install the module an
             'NEWRECORD': "\r\n"
         }
         self.DATE_FORMAT = "%Y/%m/%d"
+        self.cursor = self.connect_db()
 
     def connect_db(self):
         ''' Define methods to connect to various SQL implementations
@@ -65,16 +67,16 @@ Run pip install {0} or sudo apt-get install python-{0}, or install the module an
             connection.setdecoding(pyodbc.SQL_WCHAR, encoding='utf-8')
             connection.setencoding(str, encoding='utf-8')
             connection.setencoding(unicode, encoding='utf-8', ctype=pyodbc.SQL_CHAR)
+            return connection.cursor()
 
 
         def connect_ms():
-            connection = self.deps.get('pyodbc').connect(
-                "DRIVER=\{{0}\};SERVER={1};DATABASE={2};UID={3};PWD={4}".
-                format(self.deps.get('pyodbc').drivers()[0], self.host, self.db, self.user, self.password))
+            connectString = "DRIVER={0};SERVER={1};DATABASE={2};UID={3};PWD={4}".format('{' + self.deps.get('pyodbc').drivers()[0] + '}', self.host, self.db, self.user, self.password)
+            if self.logging:
+                self.deps.get('logging').info(connectString)
+            connection = self.deps.get('pyodbc').connect(connectString)
+
             return connection.cursor()
-            '''
-            cnxn = pyodbc.connect('DRIVER={ODBC Driver 13 for SQL Server};SERVER='+server+';DATABASE='+database+';UID='+username+';PWD='+ password)
-            '''
 
         def connect_sqlite():
             raise NotImplementedError
