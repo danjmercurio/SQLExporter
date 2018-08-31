@@ -6,11 +6,12 @@
 
 class SQLExporter(object):
 
-    def __init__(self, dbdriver='mysql', host='localhost', password=None,
+    def __init__(self, dbdriver='mysql', host='localhost', user='root', password=None,
                  db=None, output_filename='output.csv', logging=None, logger_output=None):
         self.host = host
         self.password = password
         self.db = db
+        self.user = user
         self.output_filename = output_filename
         try:
             import importlib
@@ -18,7 +19,7 @@ class SQLExporter(object):
             raise SystemExit('''You are using an out of date version of Python.
                              This utility requires Python 2.7.x or later')''')
         self.deps = dict()  # Module dependencies
-        for module in ['sys', 'datetime', 'dateutil', 'pyodbc', 'logging']:
+        for module in ['sys', 'datetime', 'dateutil.parser', 'pyodbc', 'logging', 're']:
             try:
                 self.deps[module] = importlib.import_module(module)
             except ImportError as e:
@@ -28,10 +29,13 @@ Run pip install {0} or sudo apt-get install python-{0}, or install the module an
         self.logging = logging
         self.logger_output = logger_output
         if self.logging:
-            self.deps.get('logging').basicConfig(filename=self.logger_output)
+            self.deps.get('logging').basicConfig(stream=self.logger_output, level=self.deps.get('logging').DEBUG)
             self.logger = self.deps.get('logging').getLogger()
-            self.logger.info('PySqlExport 1.0')
-            self.logger.info('Started with logging enabled. Logfile is set to {0}'.format(self.logger_output))
+            self.logger.info('PySqlExport starting...')
+            if (self.logger_output == self.deps.get('sys').stdout):
+                self.logger.info("Started with logging enabled. Logfile is set to {0}".format(self.logger_output))
+            else:
+                self.logger.info("Started with logging enabled. Logging to STDOUT")
         ''' Define the delimiters we will use; Following is from spec:
             Comma: Field break indicator, default is (ASCII 20), customizable,
             avoid characters in data
@@ -56,20 +60,34 @@ Run pip install {0} or sudo apt-get install python-{0}, or install the module an
             and then connect, returning a database cursor
         '''
         def connect_mysql():
-            pass
+            pyodbc = self.deps.get('pyodbc')
+            connection = pyodbc.connect('DRIVER={MySQL};DATABASE={0};SOCKET=/var/lib/mysql/mysql.sock'.format(self.db))
+            connection.setdecoding(pyodbc.SQL_WCHAR, encoding='utf-8')
+            connection.setencoding(str, encoding='utf-8')
+            connection.setencoding(unicode, encoding='utf-8', ctype=pyodbc.SQL_CHAR)
+
 
         def connect_ms():
-            pass
+            connection = self.deps.get('pyodbc').connect(
+                "DRIVER=\{{0}\};SERVER={1};DATABASE={2};UID={3};PWD={4}".
+                format(self.deps.get('pyodbc').drivers()[0], self.host, self.db, self.user, self.password))
+            return connection.cursor()
+            '''
+            cnxn = pyodbc.connect('DRIVER={ODBC Driver 13 for SQL Server};SERVER='+server+';DATABASE='+database+';UID='+username+';PWD='+ password)
+            '''
 
         def connect_sqlite():
-            import sqlite3
-            sqlite3.connect(self.database, timeout=None, isolation_level=None, detect_types=None, factory=None)
+            raise NotImplementedError
 
         drivers = {
             "mysql": connect_mysql,
             "sqlite": connect_sqlite,
             "mssql": connect_ms
-        }.get(self.driver)()
+        }
+
+        cursor = drivers.get(self.driver)()
+
+        return cursor
 
     def __doc__(self):
         return \
@@ -88,7 +106,7 @@ Run pip install {0} or sudo apt-get install python-{0}, or install the module an
         date format of YYYYMMDD or the mm-dd-yyyy date format with dashes.
         '''
         return {
-            str: (lambda: self.deps.get('dateutil').parser.parse(date).strftime(self.DATE_FORMAT)),
+            str: (lambda: self.deps.get('dateutil.parser').parse(date).strftime(self.DATE_FORMAT)),
             int: (lambda: self.deps.get('datetime').date.fromtimestamp(date).strftime(self.DATE_FORMAT)),
             float: (lambda: self.deps.get('datetime').date.fromtimestamp(date).strftime(self.DATE_FORMAT)),
             self.deps.get('datetime').date: (lambda: date.strftime(self.DATE_FORMAT))
@@ -98,16 +116,31 @@ Run pip install {0} or sudo apt-get install python-{0}, or install the module an
         pass
 
     def run_tests(self):
-        # Tests for date format
-        assert s.normalize_date("04.02.1992") == "1992/04/02"
-        assert s.normalize_date(1535516087) == "2018/08/28"
-        assert s.normalize_date(1535516087.322354) == "2018/08/28"
-        #  assert s.normalize_date(self.deps.get('datetime').date.today()) == "2018/08/28"
+        failed = False
 
+        # Tests for date format
+        assert self.normalize_date("04.02.1992") == "1992/04/02"
+        assert self.normalize_date(1535516087) == "2018/08/28"
+        assert self.normalize_date(1535516087.322354) == "2018/08/28"
+        # #  assert s.normalize_date(self.deps.get('datetime').date.today()) == "2018/08/28"
+
+        # # Test ODBC bindings are present
+        regex = self.deps.get('re').compile('ODBC Driver [0-9]{2} for SQL Server')
+        drivers = self.deps.get('pyodbc').drivers()
+        try:
+            assert len(drivers) > 0
+            assert filter(lambda x: regex.match(x), drivers) is not []
+        except AssertionError:
+           failed = True
+           self.deps.get('logging').warn("PyODBC module did not find Microsoft ODBC drivers for SQL Server")
+
+        if not failed:
+            self.deps.get('logging').info('All tests passed.')
 
 if (__name__ == "__main__"):
 
     from os import environ as env
     from sys import stdout
-    s = SQLExporter('mssql', env['SQL_HOST'], env['SQL_PASSWORD'],
+    s = SQLExporter('mssql', env['SQL_HOST'], 'root', env['SQL_PASSWORD'],
                     env['SQL_DB'], '~/.pysqlexport-output.csv', True, stdout)
+    s.run_tests()
